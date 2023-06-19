@@ -1,0 +1,505 @@
+---
+title: "Modified Rice Bran Arabinoxylan as a Nutraceutical in Health and Disease –
+  A Scoping Review with Bibliometric Analysis - Part VI"
+author: "Soo Liang Ooi, Peter S Micalos, and Sok Cheon Pak"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Part VI.  Bibliometric analysis - Conditions and Benefits
+
+## Load packages
+
+```{r load-packages, message=FALSE}
+library(statsr)
+library(tidyverse)
+library(readxl)
+library(visNetwork)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(formattable)
+```
+
+## The data
+
+```{r load-data}
+# Let's load up the Authors data from excel file
+benefit_list <- read_excel("Data.xlsx", sheet = "Benefits")
+article_list <- read_excel("Data.xlsx", sheet = "Articles")
+
+```
+
+
+```{r}
+
+# Display Conditions by Article Count
+
+benefit_list$StudyDesign <- factor(benefit_list$StudyDesign, levels = c("Randomised controlled trial" , "Non-randomised controlled trial", "Before and after study", "Descriptive cross-sectional studies", "Case series", "Case report", "Animal", "Cell", "Chemical"))
+
+conditions_artcount <- benefit_list %>% 
+  select(ArticleID, StudyDesign, Condition ) %>% distinct_all() %>%
+  group_by(Condition, StudyDesign) %>% summarise(N = n()) %>% 
+  mutate(n_Chemical = ifelse(as.numeric(StudyDesign) == 9, N, 0))%>%
+  mutate(n_Cell = ifelse(as.numeric(StudyDesign) == 8, N, 0))%>%
+  mutate(n_Animal = ifelse(as.numeric(StudyDesign) == 7, N, 0))%>%
+  mutate(n_Observational = ifelse(as.numeric(StudyDesign) > 3 & as.numeric(StudyDesign) < 7, N, 0))%>%
+  mutate(n_Interventional = ifelse(as.numeric(StudyDesign) <= 3, N, 0))%>%
+  select(-c("StudyDesign")) %>%
+  arrange(desc(N))
+#conditions_artcount %>% arrange(Condition)
+  
+  
+conditions_artcount  <-  conditions_artcount %>%
+  group_by(Condition) %>% 
+  summarise(Total = sum(N),Chem = sum(n_Chemical), Cell = sum(n_Cell), Animal = sum(n_Animal), H_O = sum(n_Observational), H_I = sum(n_Interventional)) %>% 
+  arrange(desc(Total), desc(H_I),desc(H_O), desc(Animal), desc(Cell), desc(Chem) )
+#conditions_artcount %>% arrange(Condition)
+
+```
+
+
+```{r}
+
+N_art = nrow(article_list)
+
+conditions_artcount <- conditions_artcount %>% 
+  mutate(Total_p = percent(Total /N_art) ) %>%
+  mutate(Chem_p = percent(Chem /Total) ) %>%
+  mutate(Cell_p = percent(Cell /Total) ) %>%
+  mutate(Animal_p = percent(Animal /Total) ) %>%
+  mutate(H_O_p = percent(H_O /Total) ) %>%
+  mutate(H_I_p = percent(H_I /Total) ) %>% 
+  select(c(1,2,8,3,9,4,10,5,11,6,12,7,13))
+conditions_artcount
+```
+
+```{r}
+# Condense the table
+conditions_artcount <- conditions_artcount %>% mutate(precl = Chem+Cell+Animal, 
+                                                      precl_p = Chem_p+Cell_p+Animal_p) %>%
+  select(c(1,2,3, 14,15, 10,11,12,13))
+conditions_artcount
+```
+
+
+```{r}
+
+# Display Beneficial Effects by Article Count
+
+benefits_artcount <- benefit_list %>% 
+  select(ArticleID, StudyDesign, BeneficialEffect ) %>% distinct_all() %>%
+  group_by(BeneficialEffect, StudyDesign) %>% summarise(N = n()) %>% 
+  mutate(n_Chemical = ifelse(as.numeric(StudyDesign) == 9, N, 0))%>%
+  mutate(n_Cell = ifelse(as.numeric(StudyDesign) == 8, N, 0))%>%
+  mutate(n_Animal = ifelse(as.numeric(StudyDesign) == 7, N, 0))%>%
+  mutate(n_Observational = ifelse(as.numeric(StudyDesign) > 3 & as.numeric(StudyDesign) < 7, N, 0))%>%
+  mutate(n_Interventional = ifelse(as.numeric(StudyDesign) <= 3, N, 0))%>%
+  select(-c("StudyDesign")) %>%
+  arrange(desc(N))
+
+ 
+benefits_artcount  <-  benefits_artcount %>%
+  group_by(BeneficialEffect) %>% 
+  summarise(Total = sum(N),Chem = sum(n_Chemical), Cell = sum(n_Cell), Animal = sum(n_Animal), H_O = sum(n_Observational), H_I = sum(n_Interventional)) %>% 
+  arrange(desc(Total), desc(H_I),desc(H_O), desc(Animal), desc(Cell), desc(Chem) )
+
+benefits_artcount <- benefits_artcount %>% 
+  mutate(Total_p = percent(Total /N_art) ) %>%
+  mutate(Chem_p = percent(Chem /Total) ) %>%
+  mutate(Cell_p = percent(Cell /Total) ) %>%
+  mutate(Animal_p = percent(Animal /Total) ) %>%
+  mutate(H_O_p = percent(H_O /Total) ) %>%
+  mutate(H_I_p = percent(H_I /Total) ) %>%
+  select(c(1,2,8,3,9,4,10,5,11,6,12,7,13))
+```
+```{r}
+# Condense the table
+benefits_artcount <- benefits_artcount %>% mutate(precl = Chem+Cell+Animal, 
+                                                      precl_p = Chem_p+Cell_p+Animal_p) %>%
+  select(c(1,2,3, 14,15, 10,11,12,13))
+benefits_artcount %>% filter(Total>1)
+```
+
+```{r}
+benefits_artcount  %>% filter(Total > 1) 
+benefits_artcount %>% filter(Total == 1) %>% select(BeneficialEffect) %>% arrange(BeneficialEffect)
+```
+```{r}
+
+#Create network nodes from the conditions and benefits
+
+cnodes <- conditions_artcount %>% select(Condition, Total) %>% 
+  rename(label = Condition, value = Total) %>% 
+  mutate(group =  "Condition") 
+bnodes <- benefits_artcount %>% select(BeneficialEffect, Total) %>% 
+  rename(label = BeneficialEffect, value = Total) %>% 
+  mutate(group =  "Effect") 
+nodes <- rbind(cnodes, bnodes) %>% 
+  mutate(group = factor(group, levels=c("Condition", "Effect", "Outcome"))) %>%
+  mutate(level = as.numeric(group)) %>%
+  rowid_to_column("id")
+nodes
+```
+
+
+```{r}
+# Edges are defined as the condition->effect within the same article with Study Design as the category
+edges <- benefit_list %>% select(Condition, BeneficialEffect, StudyDesign) %>%
+  rename(fromA = Condition, toA = BeneficialEffect, category = StudyDesign) %>% 
+  left_join(nodes, by = c("fromA"= "label")) %>% rename(from=id) %>% 
+  left_join(nodes, by = c("toA"= "label")) %>% rename(to=id) %>%
+  select(from, to, category)
+edges
+```
+
+```{r}
+
+# Display the raw network diagram
+visNetwork(nodes, edges) 
+
+```
+
+
+```{r}
+#collapse the edges by creating a value to each edge based on count of co-occurance
+edges1 <- edges %>% filter(from != to) %>% group_by(from, to, category) %>% summarise(value = n())
+#cat_color_list <- c("#FF4040", "#FF1493",  "#FFA07A", "#EEAD0E", "#00FF00", "#CAFF70", "#C1FFC1","#7FFFD4", "#98F5FF")
+cat_color_list <- c("#FF0000", "#FF0000",  "#FF0000", "#00FF00", "#00FF00", "#00FF00", "#00EEFF","#00EEFF", "#00EEFF")
+cat_color_list <- data.frame(color = cat_color_list) %>%  rowid_to_column("id")
+cat_color_list
+edges1 <- edges1 %>% mutate(cat = as.numeric(category)) %>%
+  left_join(cat_color_list, by = c("cat"= "id"))
+edges1
+
+# Define node size based on the value 
+nodes <- nodes %>% mutate(font.size = 20+(value)/2)
+
+```
+
+```{r}
+# Plot the network 
+
+visNetwork(nodes, edges1, width="100%", height="800") %>% 
+   visNodes(scaling = list(min = 5, max = 35), borderWidth=0) %>% 
+  visEdges(arrows = "to", scaling = list(min = 1, max = 10)) %>% 
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based")
+#  visIgraphLayout()
+
+
+```
+
+
+```{r}
+visNetwork(nodes, edges1) %>%  
+  visEdges(arrows = "to", smooth = TRUE, color=edges1$category) %>% 
+  visHierarchicalLayout(direction = "LR")%>% 
+  visNodes(scaling = list(min = 10, max = 20), borderWidth=0, shape = "dot")
+
+
+```
+```{r}
+# Types of cancer investigated
+cancer_p <- benefit_list %>% filter(Condition == "Cancer" & !is.na(PrimarySite)) %>%
+  select(PrimarySite, StudyDesign) %>% rename(site = PrimarySite)
+cancer_s <- benefit_list %>% filter(Condition == "Cancer" & !is.na(SecondarySite)) %>%
+  select(SecondarySite, StudyDesign) %>% rename(site = SecondarySite)
+Cancer_sites <- rbind(cancer_p, cancer_s)  %>%
+  group_by(site, StudyDesign) %>% summarise(N=n()) %>% arrange(desc(N))
+Cancer_sites
+
+```
+```{r}
+# Display Cancer Site by Article Count
+
+
+cancer_p <- benefit_list %>% filter(Condition == "Cancer" & !is.na(PrimarySite)) %>%
+  select(ArticleID, PrimarySite, StudyDesign) %>% rename(Site = PrimarySite)
+cancer_s <- benefit_list %>% filter(Condition == "Cancer" & !is.na(SecondarySite)) %>%
+  select(ArticleID, SecondarySite, StudyDesign) %>% rename(Site = SecondarySite)
+Cancer_sites <- rbind(cancer_p, cancer_s) %>% distinct_all()
+
+
+Cancer_sites_artcount <- Cancer_sites %>% 
+  group_by(Site, StudyDesign) %>% summarise(N = n()) %>% 
+  mutate(n_Chemical = ifelse(as.numeric(StudyDesign) == 9, N, 0))%>%
+  mutate(n_Cell = ifelse(as.numeric(StudyDesign) == 8, N, 0))%>%
+  mutate(n_Animal = ifelse(as.numeric(StudyDesign) == 7, N, 0))%>%
+  mutate(n_Observational = ifelse(as.numeric(StudyDesign) > 3 & as.numeric(StudyDesign) < 7, N, 0))%>%
+  mutate(n_Interventional = ifelse(as.numeric(StudyDesign) <= 3, N, 0))%>%
+  select(-c("StudyDesign")) %>%
+  arrange(desc(N))
+
+ 
+Cancer_sites_artcount  <-  Cancer_sites_artcount %>%
+  group_by(Site) %>% 
+  summarise(Total = sum(N),Chem = sum(n_Chemical), Cell = sum(n_Cell), Animal = sum(n_Animal), H_O = sum(n_Observational), H_I = sum(n_Interventional)) %>% 
+  arrange(desc(Total), desc(H_I),desc(H_O), desc(Animal), desc(Cell), desc(Chem) )
+
+cancer_art_list <- benefit_list %>% filter(Condition == "Cancer") %>% select(ArticleID) %>% distinct()
+N_cancer_art = nrow(cancer_art_list)
+
+Cancer_sites_artcount <- Cancer_sites_artcount %>% 
+  mutate(Total_p = percent(Total /N_cancer_art) ) %>%
+  mutate(Chem_p = percent(Chem /Total) ) %>%
+  mutate(Cell_p = percent(Cell /Total) ) %>%
+  mutate(Animal_p = percent(Animal /Total) ) %>%
+  mutate(H_O_p = percent(H_O /Total) ) %>%
+  mutate(H_I_p = percent(H_I /Total) ) %>%
+  select(c(1,2,8,3,9,4,10,5,11,6,12,7,13))
+
+Cancer_sites_artcount
+```
+```{r}
+# Condense the table
+Cancer_sites_artcount <- Cancer_sites_artcount %>% mutate(precl = Chem+Cell+Animal, 
+                                                      precl_p = Chem_p+Cell_p+Animal_p) %>%
+  select(c(1,2,3, 14,15, 10,11,12,13))
+Cancer_sites_artcount
+```
+
+
+
+```{r}
+# create a new list of nodes from the column names row 10 to 36
+onodes <- benefit_list %>% colnames()
+onodes <- onodes[c(10:35)] 
+onodes <- data.frame(label = onodes, group="Outcome", level=3)
+onodes
+```
+
+
+```{r}
+# Create edges as a data frame 
+edges2 <- data.frame(fromA= character(0), toA= character(0), cond = character(0), art =  character(0), cat = numeric(0) )
+
+# Edges are defined through iterating the co-occurrence of a beneficial effect and an outcome  
+for (a in unique(benefit_list$BeneficialEffect)) {
+  i_list <- benefit_list %>% filter(BeneficialEffect == a)
+  len <- nrow(i_list)
+  for(l in c(10:35)) {
+    n <- names(benefit_list)[l]
+    for (i in c(1:len)) {
+      if (!is.na(i_list[i,l]) & i_list[i,l] == "Yes") {
+        new <- c(a, n, i_list[i, 5], i_list[i, 1],  i_list[i, 4])
+        edges2[nrow(edges2) + 1,] <- new
+      }
+    }
+  }
+}
+edges2
+
+#calculate the value of outcome nodes using the edges
+edges2_dist <- edges2 %>% select(toA, art, cat) %>% distinct_all()
+lonodes <- onodes %>% left_join(edges2_dist, by = c("label" = "toA")) %>%
+  group_by(label, group,  level, cat) %>% summarise(value = n()) %>% 
+  arrange(desc(value))
+lonodes
+
+
+```
+```{r}
+outcome_list_artcount <- lonodes %>% select(label, N=value, cat) %>% 
+  mutate(n_Chemical = ifelse(cat == 9, N, 0))%>%
+  mutate(n_Cell = ifelse(cat == 8, N, 0))%>%
+  mutate(n_Animal = ifelse(cat == 7, N, 0))%>%
+  mutate(n_Observational = ifelse(cat > 3 & cat < 7, N, 0))%>%
+  mutate(n_Interventional = ifelse(cat <= 3, N, 0))%>%
+  select(-c("cat")) %>%
+  arrange(desc(N))
+outcome_list_artcount  <-  outcome_list_artcount %>%
+  group_by(label) %>% 
+  summarise(Total = sum(N),Chem = sum(n_Chemical), Cell = sum(n_Cell), Animal = sum(n_Animal), H_O = sum(n_Observational), H_I = sum(n_Interventional)) %>% 
+  arrange(desc(Total), desc(H_I),desc(H_O), desc(Animal), desc(Cell), desc(Chem) )
+
+
+
+outcome_list_artcount <- outcome_list_artcount %>% 
+  mutate(Total_p = percent(Total /N_art) ) %>%
+  mutate(Chem_p = percent(Chem /Total) ) %>%
+  mutate(Cell_p = percent(Cell /Total) ) %>%
+  mutate(Animal_p = percent(Animal /Total) ) %>%
+  mutate(H_O_p = percent(H_O /Total) ) %>%
+  mutate(H_I_p = percent(H_I /Total) ) %>%
+  select(c(1,2,8,3,9,4,10,5,11,6,12,7,13))
+outcome_list_artcount
+```
+
+```{r}
+# Condense the table
+outcome_list_artcount <- outcome_list_artcount %>% mutate(precl = Chem+Cell+Animal, 
+                                                      precl_p = Chem_p+Cell_p+Animal_p) %>%
+  select(c(1,2,3, 14,15, 10,11,12,13))
+outcome_list_artcount
+```
+
+```{r}
+# Combined Beneficial effects and Positive outcomes
+
+lonodes <- lonodes %>% group_by(label, group) %>% summarise(value = sum(value)) %>% arrange(desc(value)) %>% 
+  mutate(group = factor(group, levels=c("Condition", "Effect", "Outcome"))) %>%
+  mutate(level = as.numeric(group)) %>%  
+  rowid_to_column("id") %>% 
+  mutate(id = id + nrow(nodes)) %>% 
+  mutate(font.size = 20+(value)/2)
+lonodes
+all_nodes <- rbind(nodes, lonodes)
+all_nodes
+```
+```{r}
+# Edges are defined as the effect->outcome within the same article with Study Design as the category
+
+
+edges2 <- edges2 %>% left_join(all_nodes, by = c("fromA"= "label")) %>% rename(from=id)
+edges2 <- edges2 %>% left_join(all_nodes, by = c("toA"= "label")) %>% rename(to=id)
+edges2 <- edges2 %>% select(from, to, cat, cond)
+edges2
+
+nodes2 <- all_nodes %>% filter(group != "Condition")
+nodes2
+
+```
+```{r}
+
+# Display the raw network diagram
+visNetwork(nodes2, edges2) 
+
+```
+
+
+```{r}
+#collapse the edges by creating a value to each edge based on count of co-occurance
+edges3 <- edges2 %>% filter(from != to) %>% group_by(from, to, cat) %>% summarise(value = n())
+edges3 <- edges3%>%
+  left_join(cat_color_list, by = c("cat"= "id"))
+edges3
+
+```
+
+```{r}
+# Plot the network 
+
+visNetwork(nodes2, edges3) %>% 
+   visNodes(scaling = list(min = 5, max = 35), borderWidth=0) %>% 
+  visEdges(arrows = "to", scaling = list(min = 1, max = 10)) %>% 
+  visPhysics(stabilization= FALSE,  solver = "forceAtlas2Based")
+#  visIgraphLayout()
+
+```
+
+
+```{r}
+all_edges <- rbind(edges1, edges3)
+
+visNetwork(all_nodes, all_edges) %>% 
+   visNodes(scaling = list(min = 5, max = 35), borderWidth=0) %>% 
+  visEdges(arrows = "to", scaling = list(min = 1, max = 10)) %>% 
+  visPhysics(stabilization= FALSE,  solver = "forceAtlas2Based")
+```
+
+```{r}
+visNetwork(all_nodes, all_edges) %>%  
+  visEdges(arrows = "to", smooth = TRUE, color=all_edges$category) %>% 
+  visHierarchicalLayout(direction = "LR", levelSeparation = 500, nodeSpacing = 500)%>% 
+  visNodes(scaling = list(min = 10, max = 20), borderWidth=0, shape = "dot")
+
+
+```
+
+```{r}
+
+# Filter all benefits that link to cancer 
+cancer_node <- all_nodes %>% filter(label == "Cancer")
+cancer_benefit_edges <- all_edges %>% filter(from == cancer_node$id )
+cancer_benefit_nodes <- all_nodes %>% filter(id %in% cancer_benefit_edges$to) %>% rbind(cancer_node)
+
+# Filter all outcomes that link to benefits cancer 
+cancer_outcome_edges <- edges2 %>% filter(cond == "Cancer") %>% filter(from != to) %>% group_by(from, to, cat) %>% 
+  summarise(value = n()) %>% 
+  left_join(cat_color_list, by = c("cat"= "id"))
+cancer_outcome_nodes <- all_nodes %>% filter(id %in% cancer_outcome_edges$to) %>% rbind(cancer_benefit_nodes) %>% distinct_all()
+
+cancer_benefit_edges <- cancer_benefit_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+cancer_outcome_edges <- cancer_outcome_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+
+benefits_outcomes_edges <- rbind(cancer_benefit_edges, cancer_outcome_edges) # %>% select(-c(category))
+cancer_outcome_nodes
+benefits_outcomes_edges
+```
+
+```{r}
+visNetwork(cancer_outcome_nodes, benefits_outcomes_edges, main="Beneficial actions of RBAC against cancer and its positive outcomes", height=800, width="100%") %>%  
+  visEdges(arrows = "to", smooth = TRUE, color=benefits_outcomes_edges$category, dashes = TRUE) %>% 
+  visHierarchicalLayout(direction = "LR", levelSeparation = 500, nodeSpacing = 1500)%>% 
+  visNodes(scaling = list(min = 10, max = 100), borderWidth=1, shape = "box")
+```
+
+```{r}
+
+# Filter all benefits that link to healthy or Geriatric 
+healthy_node <- all_nodes %>% filter(label %in% c("Healthy / Nonspecific" , "Geriatric") )
+healthy_benefit_edges <- all_edges %>% filter(from %in% healthy_node$id )
+healthy_benefit_nodes <- all_nodes %>% filter(id %in% healthy_benefit_edges$to) %>% rbind(healthy_node)
+
+# Filter all outcomes that link to benefits cancer 
+healthy_outcome_edges <- edges2 %>% filter(cond %in% c("Healthy / Nonspecific" , "Geriatric")) %>% filter(from != to) %>% group_by(from, to, cat) %>% summarise(value = n()) %>%
+  left_join(cat_color_list, by = c("cat"= "id"))
+healthy_outcome_nodes <- all_nodes %>% filter(id %in% healthy_outcome_edges$to) %>% rbind(healthy_benefit_nodes) %>% distinct_all()
+
+
+healthy_benefit_edges <- healthy_benefit_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+healthy_outcome_edges <- healthy_outcome_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+
+
+
+healthy_benefits_outcomes_edges <- rbind(healthy_benefit_edges, healthy_outcome_edges) %>% select(-c(category))
+healthy_outcome_nodes
+healthy_benefits_outcomes_edges
+
+```
+```{r}
+visNetwork(healthy_outcome_nodes, healthy_benefits_outcomes_edges, main="Beneficial actions of RBAC in healthy or aged adults and its positive outcomes", height=800, width="100%") %>%  
+  visEdges(arrows = "to", smooth = TRUE, color=benefits_outcomes_edges$category, dashes = TRUE) %>% 
+  visHierarchicalLayout(direction = "LR", levelSeparation = 500, nodeSpacing = 1500)%>% 
+  visNodes(scaling = list(min = 10, max = 100), borderWidth=1, shape = "box")
+```
+
+```{r}
+
+# Filter all benefits that link to Hepatitis / Liver Disease
+liver_node <- all_nodes %>% filter(label %in% c("Hepatitis / Liver Disease") )
+liver_benefit_edges <- all_edges %>% filter(from %in% liver_node$id )
+liver_benefit_nodes <- all_nodes %>% filter(id %in% liver_benefit_edges$to) %>% rbind(liver_node)
+
+# Filter all outcomes that link to benefits cancer 
+liver_outcome_edges <- edges2 %>% filter(cond %in% c("Hepatitis / Liver Disease")) %>% filter(from != to) %>% group_by(from, to, cat) %>% summarise(value = n()) %>%
+  left_join(cat_color_list, by = c("cat"= "id"))
+liver_outcome_nodes <- all_nodes %>% filter(id %in% liver_outcome_edges$to) %>% rbind(liver_benefit_nodes) %>% distinct_all()
+
+
+liver_benefit_edges <- liver_benefit_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+liver_outcome_edges <- liver_outcome_edges %>% mutate(to1=from, from1=to) %>% mutate(to=to1, from = from1) %>% select(-c(to1, from1))
+
+
+liver_benefits_outcomes_edges <- rbind(liver_benefit_edges, liver_outcome_edges) %>% select(-c(category))
+liver_outcome_nodes
+liver_benefits_outcomes_edges
+
+```
+
+```{r}
+visNetwork(liver_outcome_nodes, liver_benefits_outcomes_edges, main="Beneficial actions of RBAC in liver diseases and its positive outcomes", height=800, width="100%") %>%  
+  visEdges(arrows = "to", smooth = TRUE, color=benefits_outcomes_edges$category, dashes = TRUE) %>% 
+  visHierarchicalLayout(direction = "LR", levelSeparation = 500, nodeSpacing = 1500)%>% 
+  visNodes(scaling = list(min = 10, max = 100), borderWidth=1, shape = "box")
+```

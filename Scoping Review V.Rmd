@@ -1,0 +1,297 @@
+---
+title: "Modified Rice Bran Arabinoxylan as a Nutraceutical in Health and Disease –
+  A Scoping Review with Bibliometric Analysis - Part V"
+author: "Soo Liang Ooi, Peter S Micalos, and Sok Cheon Pak"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Part V.  Bibliometric analysis - MeSH Keywords Analysis
+
+### Load packages
+
+```{r load-packages, message=FALSE}
+library(statsr)
+library(tidyverse)
+library(readxl)
+library(visNetwork)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(formattable)
+```
+
+### The data
+
+```{r load-data}
+# Let's load up the data from excel file
+mesh_data <- read_excel("Data.xlsx", sheet = "MeSHList")
+article_list <- read_excel("Data.xlsx", sheet = "Articles")
+
+```
+
+```{r}
+
+# Create the mesh list
+mesh_list_all <- mesh_data %>%mutate(group = (max(mesh_data$Year)-Year) %/% 5) %>%
+  mutate(Period = case_when(group == 0 ~ "2018-2022",
+                            group == 1 ~ "2013-2017",
+                            group == 2 ~ "2008-2012",
+                            group == 3 ~ "2003-2007",
+                            group == 4 ~ "1998-2002"))
+mesh_list <- mesh_list_all %>%  group_by(MeSHTerm, Category) %>%
+  summarise( N = n())
+
+# mesh_list %>% filter(N>=10) %>% arrange(desc(N))
+mesh_list %>% arrange(desc(N))
+```
+
+```{r}
+#Filter Top 10 Keywords of each category
+
+mesh_list %>% filter(Category == "Context") %>% filter(N>5)  %>% arrange(desc(N))
+mesh_list %>% filter(Category == "Method") %>% filter(N>5) %>% arrange(desc(N))
+mesh_list %>% filter(Category == "Intevention & Comparator") %>% filter(N>5) %>% arrange(desc(N))
+mesh_list %>% filter(Category == "Outcome") %>% filter(N>5) %>% arrange(desc(N))
+
+```
+
+
+
+
+
+
+
+```{r}
+#Create network nodes based on the MeSH term found in the list
+nodes <- mesh_list %>% filter(N >0) %>% rowid_to_column("id")
+
+#Node label will be the MeSH term with value and group 
+nodes <- nodes %>% rename( label = MeSHTerm, value = N, group = Category) %>% mutate(level = as.numeric(factor(group, levels = c("Context", "Method", "Intevention & Comparator", "Outcome"))))
+nodes
+```
+
+```{r}
+
+# Create edges as a data frame 
+edges <- data.frame(fromA= character(0), toA= character(0), category = character(0), year = numeric(0) )
+
+# Edges are defined through iterating all the MeSH term based on co-occurrence within the same article
+for (a in unique(mesh_data$ArticleID)) {
+  i_list <- mesh_data %>% filter(ArticleID == a)
+  u_list <- i_list$MeSHTerm
+  len <- length(u_list) -1 
+  if (len > 0) {
+    for (i in c(1:len)) {
+        k <- i+ 1
+        for (j in c(k:length(u_list))) {
+          if (u_list[i][1] <= u_list[j][1]) {
+              new <- c(u_list[i][1], u_list[j][1], a, as.numeric(i_list[1,2]))
+          } else {
+              new <- c(u_list[j][1], u_list[i][1], a, as.numeric(i_list[1,2]))
+          }
+          edges[nrow(edges) + 1,] <- new
+        }
+    }
+  }
+}
+edges <- edges %>% left_join(nodes, by = c("fromA"= "label")) %>% rename(from=id)
+edges <- edges %>% left_join(nodes, by = c("toA"= "label")) %>% rename(to=id)
+edges <- edges %>% select(from, to, year)
+edges <- edges %>% filter(!is.na(from) & !is.na(to))
+edges
+```
+
+```{r}
+
+# Display the raw network diagram
+visNetwork(nodes, edges) %>%
+  visIgraphLayout()
+
+```
+
+
+
+
+```{r}
+#Use routes_tidy package to write the graph into GML file for file exchange 
+routes_tidy <- tbl_graph(nodes = nodes,
+                         edges = edges,
+                         directed = FALSE)
+write_graph(routes_tidy, "mesh_graph.gml", format="gml" )
+routes_tidy
+```
+
+
+```{r}
+#collapse the edges by creating a value to each edge based on count of co-occurance
+edges1 <- edges %>% filter(from != to) %>% group_by(from, to) %>% summarise(value = n())
+edges1
+# Define node size based on the degree 
+nodes <- nodes %>% mutate(font.size = 14+value)
+
+# Plot the network 
+visNetwork(nodes, edges1) %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based")
+
+```
+
+
+```{r}
+#Use routes_tidy package to write the graph into GML file for file exchange 
+routes_tidy1 <- tbl_graph(nodes = nodes,
+                         edges = edges1,
+                         directed = FALSE)
+write_graph(routes_tidy1, "M_graph1.gml", format="gml" )
+routes_tidy1
+
+```
+```{r}
+# Filter edges and nodes by years 
+
+edges_p <- edges %>%select(from, to)
+nodes_p <- data.frame(id = unique(c(edges_p$from, edges_p$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level) 
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p, directed = FALSE, vertices = nodes_p)
+edges_p <- edges_p %>% distinct_all()
+nodes_p <- nodes_p %>% mutate(value = degree(g)) %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p, edges_p, main = "All years") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based")
+```
+
+
+```{r}
+# Filter edges and nodes by years 
+
+edges_p0 <- edges %>% filter(year >= 2018) %>% select(from, to)
+nodes_p0 <- data.frame(id = unique(c(edges_p0$from, edges_p0$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level) 
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p0, directed = FALSE, vertices = nodes_p0)
+
+nodes_p0 <- nodes_p0 %>% mutate(value = degree(g)) %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p0 %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p0, edges_p0, main = "2018 to 2022", height=800, width="100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based", minVelocity = 1)
+```
+```{r}
+# Filter edges and nodes by years 
+
+edges_p1 <- edges %>% filter(year < 2018 & year >= 2013) %>% select(from, to)
+nodes_p1 <- data.frame(id = unique(c(edges_p1$from, edges_p1$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level)
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p1, directed = FALSE, vertices = nodes_p1)
+
+nodes_p1 <- nodes_p1 %>% mutate(value = degree(g), color.background = "blue") %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p1 %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p1, edges_p1, main = "2013 to 2017", height=800, width="100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5), color = c("#0099FF"))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based", minVelocity = 1)
+```
+```{r}
+# Filter edges and nodes by years 
+
+edges_p2 <- edges %>% filter(year < 2013 & year >= 2008) %>% select(from, to)
+nodes_p2 <- data.frame(id = unique(c(edges_p2$from, edges_p2$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level)
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p2, directed = FALSE, vertices = nodes_p2)
+
+nodes_p2 <- nodes_p2 %>% mutate(value = degree(g), color.background = "green") %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p2 %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p2, edges_p2, main = "2008 to 2012", height=800, width="100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5), color = c("#00FF99"))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based", minVelocity = 1)
+```
+
+```{r}
+# Filter edges and nodes by years 
+
+edges_p3 <- edges %>% filter(year < 2008 & year >= 2003) %>% select(from, to)
+nodes_p3 <- data.frame(id = unique(c(edges_p3$from, edges_p3$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level)
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p3, directed = FALSE, vertices = nodes_p3)
+
+nodes_p3 <- nodes_p3 %>% mutate(value = degree(g), color.background = "yellow") %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p3 %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p3, edges_p3,  main = "2003 to 2007", height=800, width="100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5), color = c("#FFD700"))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based", minVelocity = 1)
+```
+
+
+```{r}
+# Filter edges and nodes by years 
+
+edges_p4 <- edges %>% filter(year < 2003 & year >= 1998) %>% select(from, to)
+nodes_p4 <- data.frame(id = unique(c(edges_p4$from, edges_p4$to))) %>%
+  arrange(id) %>%
+  left_join(nodes, by=c("id" = "id")) %>%
+  select(id, label, group, level)
+
+
+# use igraph 
+g <- graph_from_data_frame(edges_p4, directed = FALSE, vertices = nodes_p4)
+
+nodes_p4 <- nodes_p4 %>% mutate(value = degree(g), color.background = "red") %>% mutate(font.size = 14+degree(g)) %>% filter(level == 4)
+nodes_p4 %>% arrange(desc(font.size))
+
+# Plot the network 
+visNetwork(nodes_p4, edges_p4, main = "1998 to 2002", height=800, width="100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5), color = c("#FF9900"))  %>%
+  visPhysics(stabilization= FALSE, solver = "forceAtlas2Based", minVelocity = 1)
+```

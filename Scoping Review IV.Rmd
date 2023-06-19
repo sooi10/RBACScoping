@@ -1,0 +1,127 @@
+---
+title: "Modified Rice Bran Arabinoxylan as a Nutraceutical in Health and Disease –
+  A Scoping Review with Bibliometric Analysis - Part IV"
+author: "Soo Liang Ooi, Peter S Micalos, and Sok Cheon Pak"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Part IV.  Bibliometric analysis - Citations
+
+## Load packages
+```{r load-packages, message=FALSE}
+library(statsr)
+library(tidyverse)
+library(readxl)
+library(visNetwork)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(numbers)
+```
+
+```{r load-data}
+# Let's load up the data from excel file
+ref_list <- read_excel("Data.xlsx", sheet = "References")
+article_list <- read_excel("Data.xlsx", sheet = "Articles")
+```
+
+
+```{r}
+# Display the total number of citations
+Citation_count <- ref_list %>% filter(!is.na(RefArtID)) %>% 
+  group_by(RefArtID) %>% 
+  summarise(Citations=n())
+
+# Join with Google Citation Count in Article list 
+Citation_count <- Citation_count %>% right_join(article_list, by=c("RefArtID" = "ArticleID")) %>%
+  select(RefArtID, Year, GoogleCitations, Citations, StudyDesign) 
+Citation_count %>% filter(!is.na(GoogleCitations)) %>% summarise(length(which(GoogleCitations>0)), mean(GoogleCitations), median(GoogleCitations), sd(GoogleCitations), quantile(GoogleCitations, 0.25), quantile(GoogleCitations, 0.75), IQR(GoogleCitations))
+
+Top_cite_by_Google <- Citation_count %>% top_n(10, GoogleCitations) %>% arrange(desc(GoogleCitations))
+Top_cite_by_Others <- Citation_count %>% top_n(10, Citations) %>% arrange(desc(Citations))
+Top_cite_by_Google
+Top_cite_by_Others
+Top_cite <- merge(Top_cite_by_Google, Top_cite_by_Others, by = c("RefArtID", "Year", "GoogleCitations", "Citations", "StudyDesign" ), all = TRUE) 
+Top_cite %>% arrange(desc(GoogleCitations))
+```
+```{r}
+ggplot(Citation_count, aes(x = GoogleCitations)) + 
+  geom_histogram(binwidth = 5)
+
+```
+
+
+```{r}
+# References count
+
+Reference_count <- ref_list %>% filter(!is.na(RefArtID))  %>%  group_by(SourceArtID) %>% summarise(References=n()) %>% arrange(desc(References))
+Nil_count <-  ref_list %>% filter(is.na(RefArtID)) %>% mutate(References = 0) %>% select(SourceArtID,References )
+Reference_count <- rbind(Reference_count,Nil_count ) %>%
+  left_join(Citation_count, by = c("SourceArtID" = "RefArtID")) %>%
+  select(SourceArtID, References, Citations) %>% 
+  mutate(Citations= replace_na(Citations,0)) %>%
+  left_join(article_list, by=c("SourceArtID" = "ArticleID")) %>%
+  select(SourceArtID, Year, References, GoogleCitations, Citations, StudyDesign) 
+  
+nrow(Reference_count)
+Reference_count  %>% top_n(20, References)
+```
+```{r}
+# Filter out invalid nodes 
+
+Valid_Arts <- Reference_count %>% filter(References>0 | Citations > 0 )
+nrow(Valid_Arts)
+Valid_Arts
+```
+
+
+```{r}
+#Create nodes
+
+nodes <- ref_list %>% select(SourceID, SourceArtID, SourceYear) %>% distinct_all()
+nodes <- nodes %>% right_join(Valid_Arts, by = c("SourceArtID" = "SourceArtID")) 
+nodes <- nodes %>% rename(id = SourceID, label = SourceArtID, level= SourceYear, value = GoogleCitations, value1 = Citations , group= StudyDesign) %>% select(id,label, level, value, value1, group)
+nodes$group <- factor(nodes$group, levels = c("Randomised controlled trial" , "Non-randomised controlled trial", "Before and after study", "Descriptive cross-sectional studies", "Case series", "Case report"))
+nodes <- nodes %>% mutate(group = case_when(as.numeric(group) < 4 ~ "Interventional",
+                                    as.numeric(group) > 0 ~ "Observational",
+                                    TRUE ~ "Preclincal"))
+nrow(nodes)
+nodes
+```
+```{r}
+# Create edges
+
+edges  <- ref_list %>% filter(!is.na(DestID)) %>% select(SourceID, DestID) %>% rename(from = SourceID, to = DestID)
+nrow(edges)
+#edges
+```
+```{r}
+# Define the group and define font.size based on value = number of citations
+#nodes <- nodes  %>% mutate(group = div(value,5)) %>% mutate(font.size = 14+value)
+nodes <- nodes  %>% mutate(font.size = 20+value1*2)
+nodes %>% top_n(10, font.size) %>% arrange(desc(font.size))
+
+```
+
+```{r}
+
+visNetwork(nodes, edges,  main = "Citation Networks for RBAC Research", height = 1000, width="100%" ) %>%
+  visIgraphLayout() %>%
+  visEdges(arrows = "to", smooth = TRUE, dashes = FALSE, color = list(opacity = 0.3)) %>% 
+  visHierarchicalLayout(direction = "LR", levelSeparation = 200, nodeSpacing = 300) %>% 
+  visNodes(scaling = list(min = 25, max = 500), borderWidth=0, shape = "ellipse")
+
+```
+
+

@@ -1,0 +1,388 @@
+---
+title: Modified Rice Bran Arabinoxylan as a Nutraceutical in Health and Disease –
+  A Scoping Review with Bibliometric Analysis - Part I
+author: "Soo Liang Ooi, Peter S Micalos, and Sok Cheon Pak"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Part I.  Descriptive Data Analysis
+
+## Load packages
+
+The following are the R libray used in the analysis:
+
+```{r load-packages, message=FALSE}
+library(statsr)
+library(dplyr)
+library(igraph)
+library(readxl)
+library(ggplot2)
+library(ggVennDiagram)
+library(ggpubr)
+```
+
+## The data
+
+All data is captured in an excel file. The following R code lodes the data from the "Articles' tab in the excel file for analysis:
+
+```{r load-data}
+# Let's load up the data from excel file
+article_list <- read_excel("Data.xlsx", sheet = "Articles")
+```
+
+### Descriptive summary of the included articles: Year, country, language, and type.
+
+#### Years of Publications
+The following table shows the mean and median number of articles published: 
+```{r}
+article_count_by_year <- article_list %>% 
+  group_by(Year) %>% summarise(N = n()) %>%
+  mutate(cum_N = cumsum(N)) %>% select(Year, N, cum_N)
+article_count_by_year %>% summarise(mean(N), sd(N), median(N), quantile(N, 0.25), quantile(N, 0.75), IQR(N))
+```
+
+Fig 2. A scatter plot of the cumulative number of articles published over the years and a bar chart of the annual article count: 
+```{r}
+# combine bar and line chart
+
+ggplot(article_count_by_year) +
+  geom_bar(aes(x=Year, y=N*2),stat="identity", fill="#5599EE",colour="#006000")+
+  scale_x_continuous(breaks=seq(1998,2022,1)) +
+  theme(axis.text.x = element_text(face="bold", angle=90))+
+  scale_y_continuous(breaks=seq(0,110,10), name = "Cumulative Total", sec.axis=sec_axis(~./2,name="Article Count"))+
+  geom_point(aes(x=Year, y=cum_N), size = 2) +
+  geom_smooth(aes(x=Year, y=cum_N), method=lm, se=FALSE, linetype = "dashed")
+#  geom_line(aes(x=Year, y=cum_N/8), method=lm, se=FALSE)
+
+```
+
+The following table shows the number of articles published grouped by 5 yearly bin from 1998-2022:
+```{r}
+# Add two new columns year_bin and year_group
+article_list <- article_list %>% mutate(year_bin = (max(article_list$Year)-Year) %/% 5) %>%
+  mutate(Period = case_when(year_bin == 0 ~ "2018-2022",
+                                year_bin == 1 ~ "2013-2017",
+                                year_bin == 2 ~ "2008-2012",
+                                year_bin == 3 ~ "2003-2007",
+                                year_bin == 4 ~ "1998-2002"))
+#article_list
+ar_bin <- article_list %>% group_by(Period) %>% summarise(N = n()) %>% mutate(perc_bin = formattable::percent(N / sum(N)))
+ar_bin
+```
+#### Countries
+
+```{r}
+# Display the total number of articles group by country
+df_c <- article_list %>% group_by(Country) %>% summarise(N = n()) 
+df_c %>% arrange(desc(N))
+df_c <- df_c %>% 
+  mutate(C_group = case_when(N > 2 ~ Country, TRUE ~ "Others")) %>% 
+  group_by(C_group) %>% summarise(N_group = sum(N)) %>%
+  mutate(perc = formattable::percent(N_group / sum(N_group))) %>% 
+  rename(Country = C_group) %>%
+  arrange(desc(N_group))
+df_c
+df_c$Country <- factor(df_c$Country , levels=c("USA", "Japan", "South Korea", "Egypt", "Hungary", "Others"))
+
+#plot the pie chart
+#Define a blank theme
+blank_theme <- theme_minimal()+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(hjust = 1.5, size=14, face="bold")
+)
+plot_c <- ggplot(df_c, aes(x="", y=perc, fill=Country)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) + blank_theme +
+  theme(axis.text.x=element_blank()) +
+  geom_text(aes(x=1.55, label = Country), position = position_stack(vjust=0.4)) +
+  geom_text(aes(x=1.4, label = perc), position = position_stack(vjust=0.5)) +
+  ggtitle("Articles Breakdown by Country")
+
+plot_c
+
+```
+
+#### Languages
+```{r}
+# Display the total number of articles group by language
+df_l <- article_list %>% group_by(Language) %>% summarise(N = n()) %>% mutate(perc = formattable::percent(N / sum(N))) %>% arrange(desc(N))
+df_l
+
+#plot the pie chart
+plot_l <- ggplot(df_l, aes(x="", y=perc, fill=Language)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) + blank_theme +
+  theme(axis.text.x=element_blank()) +
+  geom_text(aes(x=1.6, label = Language), position = position_stack(vjust=0.5)) +
+  geom_text(aes(x=1.4, label = paste(N,"(",perc,")")), position = position_stack(vjust=0.55)) +
+  ggtitle("Articles Breakdown by Language") +
+  theme(legend.position = "none", plot.title=element_text(hjust = 0.5, size=14, face="bold"))
+
+plot_l
+```
+```{r}
+
+# Total number of articles group by year and language
+article_list$Language <- factor(article_list$Language , levels=c("Korean", "Japanese", "English"))
+df_yl <- article_list %>% group_by(Year, Language) %>% summarise(N = n()) 
+# Plot the bar chart
+plot_yl <- ggplot(df_yl, aes(x = Year, y=N, fill = Language)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = N), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  scale_x_continuous(breaks=seq(1998,2022,1)) + 
+  scale_y_continuous(breaks=seq(0,12,2)) + 
+  theme(axis.text.x = element_text(face="bold", angle=90)) +
+  ggtitle("Number of Article Published Over the Years Breakdown By Language") 
+plot_yl
+
+```
+#### Publication Types
+
+```{r}
+# Display the total number of articles group by ArticleType
+
+df_at <- article_list %>% group_by(ArticleType) %>% summarise(N = n()) %>% mutate(perc = formattable::percent(N / sum(N))) %>% arrange(desc(N))
+df_at
+
+#plot the pie chart
+plot_at <- ggplot(df_at, aes(x="", y=perc, fill=ArticleType)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) + blank_theme +
+  theme(axis.text.x=element_blank()) +
+  geom_text(aes(x=1.6, label = perc), position = position_stack(vjust=0.5)) +
+  #geom_text(aes(x=1.4, label = perc), position = position_stack(vjust=0.5)) +
+  ggtitle("Articles Breakdown by Article Type")
+
+plot_at
+
+```
+
+### Descriptive summary of the included articles: Study design and translational stage.
+#### Study Designs
+
+```{r}
+# Use VennDiagram to represent the Preclinical Study Design
+
+I_list <- article_list %>% filter(InVitroStudy=="Yes") %>% select(UID)
+A_list <- article_list %>% filter(AnimalStudy=="Yes") %>% select(UID)
+O_list <- article_list %>% filter(ChemicalAnalysis=="Yes") %>% select(UID)
+venn_list <- list(Animal= A_list$UID, Chemical=O_list$UID, Cell = I_list$UID)
+ggVennDiagram(venn_list, set_color = c("red","green","blue"))
+
+```
+
+
+```{r}
+# Count the different preclinical study types
+# Count the total number of articles group by Clinical Study Design
+article_list$PreclinicalDesign <- factor(article_list$PreclinicalDesign, levels = c("Animal" , "Animal+Cell", "Animal+Cell+Chemical", "Cell", "Cell+Chemical", "Chemical"))
+
+df_ht <- article_list %>% filter(!is.na(PreclinicalDesign)) %>%  group_by(PreclinicalDesign) %>% 
+  summarise(N = n()) %>% mutate(perc = formattable::percent(N / nrow(article_list))) 
+df_ht
+```
+
+
+```{r}
+
+# Count the total number of articles group by Clinical Study Design
+article_list$ClinicalDesign <- factor(article_list$ClinicalDesign, levels = c("Randomised controlled trial" , "Non-randomised controlled trial", "Before and after study", "Descriptive cross-sectional studies", "Case series", "Case report"))
+
+
+df_ht <- article_list %>% 
+  filter(!is.na(ClinicalDesign)) %>%  
+  group_by(ClinicalDesign) %>% 
+  summarise(N = n()) %>% 
+  mutate(perc = formattable::percent(N / nrow(article_list))) 
+df_ht
+```
+
+```{r}
+
+# Total number of articles group by preclinical and clinical studies
+df_st1 <- article_list %>% 
+  group_by(Period, StudyType) %>% 
+  summarise(Total = n()) %>%
+  left_join(subset(ar_bin, select=c("Period", "N")), by = c("Period" = "Period") ) %>%
+  mutate(Ratio = formattable::percent(Total / N))
+
+# Plot the bar chart by number
+plot_st1_n <- ggplot(df_st1, aes(x = Period, y=Total, fill = StudyType)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Total), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  theme(axis.text.x = element_text(face="bold", angle=0)) +
+  ggtitle("Number of Article Published Over 5 Year period Breakdown By Study Type") 
+
+# Plot the bar chart by ratio
+plot_st1 <- ggplot(df_st1, aes(x = Period, y=Ratio, fill = StudyType)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Ratio), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  theme(axis.text.x = element_text(face="bold", angle=0)) +
+  ggtitle("Ratio of Article Published Over 5 Year period Breakdown By Study Type") 
+
+ggarrange(plot_st1_n, plot_st1,labels = c("A", "B"), ncol = 1, nrow = 2)
+```
+
+```{r}
+# Further breakdown clinical studies into observational and interventional 
+article_list <- article_list %>% 
+  mutate(StudyDesign = case_when(as.numeric(ClinicalDesign) < 4 ~ "Interventional",
+                                 as.numeric(ClinicalDesign) > 0 ~ "Observational",
+                                                           TRUE ~ "Preclincal"))
+
+# Display the ratio of of articles group by preclinical observational and interventional studies over the years
+df_st2 <- article_list %>% 
+  group_by(Period, StudyDesign) %>% 
+  summarise(Total = n()) %>%
+  left_join(subset(ar_bin, select=c("Period", "N")), by = c("Period" = "Period") ) %>%
+  mutate(Ratio = formattable::percent(Total / N))
+
+# Plot the Ratio bar chart
+plot_st2_n <- ggplot(df_st2, aes(x = Period, y=Total, fill = StudyDesign)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Total), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  theme(axis.text.x = element_text(face="bold", angle=0)) 
+#+ ggtitle("Total Article Published Over 5 Year period Breakdown By Study Design") 
+#plot_st2_n
+
+
+# Plot the Ratio bar chart
+plot_st2 <- ggplot(df_st2, aes(x = Period, y=Ratio, fill = StudyDesign)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Ratio), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  theme(axis.text.x = element_text(face="bold", angle=0)) 
+```
+
+Fig. 3 The number of articles published over time by study design: (A) the absolute count and (B) the relative percentage.
+```{r}
+mixed_plot <- ggarrange(plot_st2_n, plot_st2,labels = c("A", "B"), ncol = 1, nrow = 2)
+mixed_plot
+```
+
+#### Translational Stages
+```{r}
+# Further breakdown studies based on translational stages
+article_count_by_tstage <- article_list %>% 
+  group_by(Tstage) %>% summarise(N = n()) %>%
+  mutate(Total = sum(N)) %>% select(Tstage, N, Total) %>%                                  
+  mutate(Ratio = formattable::percent(N / Total))
+article_count_by_tstage
+```
+### Descriptive summary of the included articles: Sources of product and fund.
+#### Sources of product
+```{r}
+# Display the total number of articles group by source
+
+df_s <- article_list %>% group_by(Source) %>% summarise(N = n()) %>% mutate(perc =formattable::percent( N / sum(N)))
+df_s
+
+#plot the pie chart
+plot_s <- ggplot(df_s, aes(x="", y=perc, fill=Source)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) + blank_theme +
+  theme(axis.text.x=element_blank()) +
+  geom_text(aes(x=1.6, label = Source), position = position_stack(vjust=0.5)) +
+  geom_text(aes(x=1.4, label = paste(N,"(",perc,")")), position = position_stack(vjust=0.55)) +
+  ggtitle("Articles Breakdown by Product Source") +
+  theme(legend.position = "none", plot.title=element_text(hjust = 0.5, size=14, face="bold")) +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))
+
+plot_s
+
+```
+#### Funding analysis
+
+```{r load-funding}
+# Let's load up the funding data from excel file
+funding_list <- read_excel("Data.xlsx", sheet = "Funding") %>%
+  mutate(Disclosure = ifelse(Source != "Unknown", "Yes", "No"))
+funding_list %>% group_by(Disclosure) %>% summarise(N = n()) %>% mutate(perc = formattable::percent(N / sum(N)))
+
+```
+```{r}
+# Public vs private/commercial
+
+funding_list %>% filter(Disclosure == "Yes") %>% 
+  mutate(Public = ifelse(is.na(Public), "No", "Yes")) %>% 
+  group_by(Public) %>% summarise(N = n()) %>% 
+  mutate(perc = formattable::percent(N / sum(N)))%>%
+  mutate(gperc = formattable::percent(N / nrow(funding_list)))
+
+```
+```{r}
+# Nonprofit? 
+funding_list %>% filter(Disclosure == "Yes") %>% 
+  mutate(P_Nonprofit = ifelse(is.na(P_Nonprofit), "No", "Yes")) %>% 
+  group_by(P_Nonprofit) %>% summarise(N = n()) %>% 
+  mutate(perc = formattable::percent(N / sum(N)))%>%
+  mutate(gperc = formattable::percent(N / nrow(funding_list)))
+
+
+```
+
+```{r}
+# Commercial
+
+funding_list %>% filter(Disclosure == "Yes") %>% 
+  mutate(Commercial = ifelse(is.na(Commercial), "Non-Commercial", Commercial)) %>% 
+  group_by(Commercial) %>% summarise(N = n()) %>% 
+  mutate(perc = formattable::percent(N / sum(N)))%>%
+  mutate(gperc = formattable::percent(N / nrow(funding_list)))
+
+
+```
+
+```{r}
+# Daiwa - Product Only?
+
+funding_list %>% filter(Disclosure == "Yes") %>% 
+  mutate(`Product Only` = ifelse(is.na(`Product Only`), "No", `Product Only`)) %>% 
+  group_by(`Product Only`) %>% summarise(N = n()) %>% 
+  mutate(perc = formattable::percent(N / sum(N)))%>%
+  mutate(gperc = formattable::percent(N / nrow(funding_list)))
+
+```
+#### Fig.4. The proportion of articles published over the years with funding disclosure.
+
+```{r}
+funding_list <- funding_list %>% 
+  mutate(Disclosure = ifelse(Source != "Unknown", "Yes", "No")) %>% 
+  mutate(year_bin = (max(funding_list$Year)-Year) %/% 5) %>%
+  mutate(Period = case_when(year_bin == 0 ~ "2018-2022",
+                                year_bin == 1 ~ "2013-2017",
+                                year_bin == 2 ~ "2008-2012",
+                                year_bin == 3 ~ "2003-2007",
+                                year_bin == 4 ~ "1998-2002"))
+
+df_yd <- funding_list %>% group_by(Period, Disclosure) %>% summarise(N = n()) %>% mutate(perc = formattable::percent(N / sum(N)))
+df_yd
+```
+```{r}
+
+# Plot the bar chart
+plot_yd <- ggplot(df_yd, aes(x = Period, y=perc, fill = Disclosure)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = perc), size=3,  hjust = 0.5, vjust = 1.5, position ="stack") +
+  #scale_x_continuous(breaks=seq(1998,2022,1)) + 
+  #scale_y_continuous(breaks=seq(0,12,2)) + 
+  theme(axis.text.x = element_text(face="bold", angle=0)) +
+  ggtitle("Proportion of Article Published Over the Years With Funding Disclosure ") 
+plot_yd
+
+

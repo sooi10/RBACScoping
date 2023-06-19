@@ -1,0 +1,232 @@
+---
+title: "Modified Rice Bran Arabinoxylan as a Nutraceutical in Health and Disease –
+  A Scoping Review with Bibliometric Analysis - Part III"
+author: "Soo Liang Ooi, Peter S Micalos, and Sok Cheon Pak"
+date: "2023-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Part III.  Bibliometric analysis - Institutions
+## Load packages
+
+```{r load-packages, message=FALSE}
+library(statsr)
+library(tidyverse)
+library(readxl)
+library(visNetwork)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(formattable)
+```
+
+## The data
+
+```{r load-data}
+# Let's load up the data from excel file
+institutions_data <- read_excel("Data.xlsx", sheet = "Institutions")
+authorship_list <- read_excel("Data.xlsx", sheet = "Authorships")
+article_list <- read_excel("Data.xlsx", sheet = "Articles")
+
+nrow(institutions_data)
+```
+```{r}
+# Summaries by type
+institutions_data %>% group_by(Type) %>% summarise(N = n()) %>% mutate(perc = percent(N / sum(N))) %>% arrange(desc(perc))
+
+
+```
+
+
+
+```{r}
+
+# Create the institution list
+inst_list <- institutions_data %>% select(Organisation, Country, Type, AuthorCount, ArtCount, ArtPerc, SumWeightedCoeff, Earliest, Latest) %>% 
+  mutate(ArtPerc = formattable::percent(ArtPerc)) 
+
+# Display Top 10 Institutions by Article Count
+top_inst_by_artcount <- inst_list %>% 
+  top_n(10, ArtCount)
+
+# Display Top 10 Institutions by Sum of Weight Coefficient of the authors
+top_inst_by_TWC <- inst_list %>% 
+  top_n(10, SumWeightedCoeff)
+
+# outer join the two list and arrange by TWC
+top_inst_all <- merge(top_inst_by_artcount, top_inst_by_TWC, 
+                       by=c("Organisation", "Country","Type", "AuthorCount", "SumWeightedCoeff","ArtCount", "ArtPerc",  "Earliest", "Latest" ), all = TRUE) 
+
+
+
+top_inst_all %>% arrange(desc(SumWeightedCoeff))
+top_inst_all %>% arrange(desc(ArtCount))
+
+```
+
+```{r}
+
+# inner join
+top_inst  <- merge(top_inst_by_artcount, top_inst_by_TWC, 
+                       by=c("Organisation", "Country","Type", "AuthorCount", "SumWeightedCoeff","ArtCount", "ArtPerc",  "Earliest", "Latest"  ), all = FALSE) 
+
+top_inst %>% arrange(desc(SumWeightedCoeff))
+top_inst %>% arrange(desc(ArtCount))
+
+```
+
+```{r}
+# Find the research focus of the institutions 
+
+# get distinct institutions
+dis_inst_list <- authorship_list %>% select(ArticleID, Affiliation) %>% distinct_all()
+
+# Join the institutions with distinct authorship list
+dis_inst_list <- dis_inst_list %>% 
+  left_join(inst_list, by=c("Affiliation" = "Organisation" )) 
+
+# Join the article list to get the study types
+
+research_focus <- dis_inst_list %>% 
+  left_join(article_list, by=c("ArticleID" = "ArticleID")) %>% 
+  select(Organisation = Affiliation, ArtCount, HumanStudy, AnimalStudy, InVitroStudy, ChemicalAnalysis, ClinicalDesign) %>%
+  mutate(HumanStudy = factor(HumanStudy),AnimalStudy =factor(AnimalStudy), InVitroStudy = factor(InVitroStudy), ChemicalAnalysis = factor(ChemicalAnalysis)) %>%
+  mutate(ClinicalDesign = factor(ClinicalDesign, levels = c("Randomised controlled trial" , "Non-randomised controlled trial", "Before and after study", "Descriptive cross-sectional studies", "Case series", "Case report"))) %>%
+  mutate(InterventionStudy = case_when(as.numeric(ClinicalDesign) < 4 ~ 1,
+                                       as.numeric(ClinicalDesign) > 0 ~ 0,
+                                       TRUE ~ 0))  %>%
+  mutate(OberservationStudy = case_when(as.numeric(ClinicalDesign) < 4 ~ 0,
+                                       as.numeric(ClinicalDesign) > 0 ~ 1,
+                                       TRUE ~ 0)) %>%
+  select(-c("ClinicalDesign"))
+research_focus
+
+
+# Calculate the % of each study type over article count
+
+research_focus <- research_focus %>% 
+  group_by(Organisation) %>% 
+  summarise(H_p= percent(sum(as.numeric(HumanStudy)-1)/ ArtCount), 
+            A_p = percent(sum(as.numeric(AnimalStudy)-1)/ ArtCount), 
+            I_p = percent(sum(as.numeric(InVitroStudy)-1)/ ArtCount), 
+            C_p = percent(sum(as.numeric(ChemicalAnalysis)-1)/ ArtCount), 
+            HI_p = percent(sum(InterventionStudy)/ ArtCount), 
+            HO_p = percent(sum(OberservationStudy)/ ArtCount )) %>% distinct_all()
+research_focus
+```
+
+```{r}
+# Display top institutions with corresponding research focus
+
+top_inst_list <- top_inst %>%
+  left_join(research_focus, by=c("Organisation" = "Organisation")) %>% arrange(desc(ArtCount))
+
+top_inst_list %>% select(Organisation, Earliest, Latest, HI_p, HO_p, A_p, I_p, C_p  )
+```
+
+
+
+```{r}
+# Create the institution list with article ID 
+institution_list <- authorship_list %>% select(ArticleID, Affiliation, Country)
+institution_list
+```
+
+
+
+```{r}
+#Create network nodes based on the unique institutional affiliation found in the list
+nodes <- institution_list %>% select(Affiliation, Country) %>% distinct_all()
+nodes <- rowid_to_column(nodes, "id")
+
+#Node label will be the institution and group them by Country 
+nodes <- nodes %>% rename( label = Affiliation, group = Country)
+nodes
+```
+
+```{r}
+
+# Create edges as a data frame 
+edges <- data.frame(fromA= character(0), toA= character(0), category = character(0) )
+
+# Edges are defined through iterating all the articles based on co-occurrence within the same article
+for (a in unique(institution_list$ArticleID)) {
+  i_list <- institution_list %>% filter(ArticleID == a)
+  u_list <- i_list$Affiliation
+  len <- length(u_list) -1 
+  if (len > 0) {
+    for (i in c(1:len)) {
+        k <- i+ 1
+        for (j in c(k:length(u_list))) {
+          if (u_list[i][1] <= u_list[j][1]) {
+              new <- c(u_list[i][1], u_list[j][1], a)
+          } else {
+              new <- c(u_list[j][1], u_list[i][1], a)
+          }
+          edges[nrow(edges) + 1,] <- new
+        }
+    }
+  }
+}
+edges <- edges %>% left_join(nodes, by = c("fromA"= "label")) %>% rename(from=id)
+edges <- edges %>% left_join(nodes, by = c("toA"= "label")) %>% rename(to=id)
+edges <- edges %>% select(from, to, category)
+#edges
+```
+
+```{r}
+
+# Display the raw network diagram
+visNetwork(nodes, edges) 
+
+```
+```{r}
+#Use routes_tidy package to write the graph into GML file for file exchange 
+routes_tidy <- tbl_graph(nodes = nodes,
+                         edges = edges,
+                         directed = FALSE)
+write_graph(routes_tidy, "int_graph.gml", format="gml" )
+routes_tidy
+```
+
+
+```{r}
+#collapse the edges by creating a value to each edge based on count of co-occurance
+edges1 <- edges %>% filter(from != to) %>% group_by(from, to, category) %>% summarise(value = n())
+
+# use igraph 
+g <- graph_from_data_frame(edges1, directed = FALSE, vertices = nodes)
+
+# Define node size based on the degree 
+nodes <- nodes %>% mutate(value = (degree(g)^2)) %>% mutate(font.size = 14+degree(g))
+
+# Plot the network 
+visNetwork(nodes, edges1, main = "Collaorative Networks of Institutions in RBAC Research",  height = "800", width = "100%") %>% 
+  visNodes(scaling = list(min = 5, max = 50), borderWidth=0) %>% 
+  visEdges(scaling = list(min = 1, max = 5), color=edges1$category)
+
+```
+
+
+```{r}
+#Use routes_tidy package to write the graph into GML file for file exchange 
+routes_tidy1 <- tbl_graph(nodes = nodes,
+                         edges = edges1,
+                         directed = FALSE)
+write_graph(routes_tidy1, "int_graph1.gml", format="gml" )
+routes_tidy1
+
+```
+
+
+
