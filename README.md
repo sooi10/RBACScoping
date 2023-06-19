@@ -6,6 +6,7 @@ The following are the descriptions of the files:
 
   Data.xlsx - contains all the raw data for analysis
   Scoping Review I - VI.Rmd - these are the R markdown files for conducting the analysis 
-  Scoping Review I - VI.html - these are the output of the R markdown files  
+  Scoping Review I - VI.html - these are the output of the R markdown files 
+  Networks.zip - this zip files contain all the output html files for the network analysis.
 
 The Rmd files have been tested on RStudio 2023.06.0 Build 421 and R ver 4.2.2.  
