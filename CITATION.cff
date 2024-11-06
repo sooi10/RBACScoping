@@ -1,0 +1,24 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Modified rice bran arabinoxylan as a nutraceutical in
+  health and disease—A scoping review with bibliometric
+  analysis
+message: >-
+  If you use this dataset, please cite it using the metadata
+  from this file.
+type: dataset
+authors:
+  - given-names: Soo Liang
+    family-names: Ooi
+    email: sooi@csu.edu.au
+    affiliation: Charles Sturt University
+    orcid: 'https://orcid.org/0000-0002-0534-3673'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.14043224
+repository-code: 'https://github.com/sooi10/RBACScoping'
+url: 'https://resource.rbac-qol.info/'
+license: CC-BY-NC-SA-4.0
